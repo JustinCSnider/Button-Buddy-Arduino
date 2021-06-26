@@ -1,3 +1,4 @@
+
 /*********************************************************************
  This is an example for our nRF52 based Bluefruit LE modules
 
@@ -13,12 +14,24 @@
 *********************************************************************/
 
 #include <bluefruit.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include "Adafruit_LEDBackpack.h"
+#include <Timer.h>
+
+Adafruit_7segment matrix = Adafruit_7segment();
 
 // OTA DFU service
 BLEDfu bledfu;
 
 // Uart over BLE service
 BLEUart bleuart;
+
+Timer t;
+uint8_t timerValue;
+boolean timerValueSet = false;
+int timerZeroFlashCount = 0;
+int timerZeroFlashTimeOut = 3;
 
 // Function prototypes for packetparser.cpp
 uint8_t readPacket (BLEUart *ble_uart, uint16_t timeout);
@@ -51,7 +64,15 @@ void setup(void)
 
   Serial.println(F("Please use Adafruit Bluefruit LE app to connect in Controller mode"));
   Serial.println(F("Then activate/use the sensors, color picker, game controller, etc!"));
-  Serial.println();  
+  Serial.println();
+  
+  #ifndef __AVR_ATtiny85__
+    Serial.begin(9600);
+    Serial.println("7 Segment Backpack Test");
+  #endif
+
+  matrix.begin(0x70);
+  t.every(1000, checkTimer);
 }
 
 void startAdv(void)
@@ -89,6 +110,7 @@ void startAdv(void)
 /**************************************************************************/
 void loop(void)
 {
+  t.update();
   // Wait for new data to arrive
   uint8_t len = readPacket(&bleuart, 500);
   if (len == 0) return;
@@ -99,8 +121,23 @@ void loop(void)
   // Timer
   if (packetbuffer[1] == 'T') {
     uint8_t value = packetbuffer[2];
-    Serial.print("Timer Value: ");
-    Serial.print(value);
+    timerValue = value;
+    Serial.println();
+    Serial.println("Timer Value: ");
+    Serial.print(timerValue);
+    if (timerValue % 60 == 0) {
+      matrix.println((timerValue / 60) * 100);
+      matrix.drawColon(true);
+    } else if (timerValue < 60) {
+      matrix.println(timerValue, DEC);
+      matrix.drawColon(false);
+    } else {
+      int finalValue = ((int)(timerValue / 60) * 100) + timerValue % 60;
+      matrix.println(finalValue, DEC);
+      matrix.drawColon(true);
+    }
+    matrix.writeDisplay();
+    timerValueSet = true;
   }
 
   // Color
@@ -116,4 +153,37 @@ void loop(void)
     if (blue < 0x10) Serial.print("0");
     Serial.println(blue, HEX);
   }
+}
+
+void checkTimer() {
+    if (!timerValueSet) return;
+    if (timerValue > 0) {
+      matrix.blinkRate(0);
+      timerValue -= 1;
+    }
+    if (timerValue % 60 == 0) {
+      matrix.println((timerValue / 60) * 100);
+      matrix.drawColon(true);
+    } else if (timerValue < 60) {
+      matrix.println(timerValue, DEC);
+      matrix.drawColon(false);
+    } else {
+      int finalValue = ((int)(timerValue / 60) * 100) + timerValue % 60;
+      matrix.println(finalValue, DEC);
+      matrix.drawColon(true);
+    }
+    if (timerValue <= 0) {
+      matrix.writeDigitNum(0, 0);
+      matrix.writeDigitNum(1, 0);
+      matrix.drawColon(true);
+      matrix.writeDigitNum(3, 0);
+      matrix.writeDigitNum(4, 0);
+      matrix.blinkRate(1);
+      timerZeroFlashCount += 1;
+      if (timerZeroFlashCount >= timerZeroFlashTimeOut) {
+        timerValueSet = false;
+        matrix.blinkRate(0);
+      }
+    }
+    matrix.writeDisplay();
 }
