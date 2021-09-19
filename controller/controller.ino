@@ -33,6 +33,9 @@ boolean timerValueSet = false;
 int timerZeroFlashCount = 0;
 int timerZeroFlashTimeOut = 3;
 
+int buttonPin = A0;
+boolean buttonPressed = false;
+
 // Function prototypes for packetparser.cpp
 uint8_t readPacket (BLEUart *ble_uart, uint16_t timeout);
 float   parsefloat (uint8_t *buffer);
@@ -110,6 +113,9 @@ void startAdv(void)
 /**************************************************************************/
 void loop(void)
 {
+  if (analogRead(buttonPin) > 0) {
+    buttonPressed = true;
+  }
   t.update();
   // Wait for new data to arrive
   uint8_t len = readPacket(&bleuart, 500);
@@ -156,7 +162,7 @@ void loop(void)
 }
 
 void checkTimer() {
-    if (!timerValueSet) return;
+    if (!timerValueSet || !buttonPressed) return;
     if (timerValue > 0) {
       matrix.blinkRate(0);
       timerValue -= 1;
@@ -182,6 +188,7 @@ void checkTimer() {
       timerZeroFlashCount += 1;
       if (timerZeroFlashCount >= timerZeroFlashTimeOut) {
         timerValueSet = false;
+        buttonPressed = false;
         matrix.blinkRate(0);
       }
     }
