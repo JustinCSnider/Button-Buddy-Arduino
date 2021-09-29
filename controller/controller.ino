@@ -29,12 +29,16 @@ BLEUart bleuart;
 
 Timer t;
 uint8_t timerValue;
+uint8_t currentTimerValue;
 boolean timerValueSet = false;
 int timerZeroFlashCount = 0;
 int timerZeroFlashTimeOut = 3;
 
 int buttonPin = A0;
+int previoiusButtonPinValue = 0;
 boolean buttonPressed = false;
+boolean resetButtonPressed = false;
+int lastButtonPressCount = 0;
 
 // Function prototypes for packetparser.cpp
 uint8_t readPacket (BLEUart *ble_uart, uint16_t timeout);
@@ -113,9 +117,19 @@ void startAdv(void)
 /**************************************************************************/
 void loop(void)
 {
-  if (analogRead(buttonPin) > 0) {
-    buttonPressed = true;
+  lastButtonPressCount++;
+  if (analogRead(buttonPin) > 900) {
+    if (previoiusButtonPinValue < 900) {
+      Serial.println("Button Pressed");
+      if (lastButtonPressCount < 4) {
+        resetButtonPressed = true;
+      } else {
+        buttonPressed = !buttonPressed;
+      }
+      lastButtonPressCount = 0;
+    }
   }
+  previoiusButtonPinValue = analogRead(buttonPin);
   t.update();
   // Wait for new data to arrive
   uint8_t len = readPacket(&bleuart, 500);
@@ -128,6 +142,7 @@ void loop(void)
   if (packetbuffer[1] == 'T') {
     uint8_t value = packetbuffer[2];
     timerValue = value;
+    currentTimerValue = value;
     Serial.println();
     Serial.println("Timer Value: ");
     Serial.print(timerValue);
@@ -162,23 +177,31 @@ void loop(void)
 }
 
 void checkTimer() {
-    if (!timerValueSet || !buttonPressed) return;
-    if (timerValue > 0) {
+    if ((!timerValueSet || !buttonPressed) && !resetButtonPressed) return;
+    
+    if (currentTimerValue > 0) {
       matrix.blinkRate(0);
-      timerValue -= 1;
+      currentTimerValue -= 1;
     }
-    if (timerValue % 60 == 0) {
-      matrix.println((timerValue / 60) * 100);
+    
+    if (resetButtonPressed) {
+      resetButtonPressed = false;
+      buttonPressed = false;
+      currentTimerValue = timerValue;
+    }
+    
+    if (currentTimerValue % 60 == 0) {
+      matrix.println((currentTimerValue / 60) * 100);
       matrix.drawColon(true);
-    } else if (timerValue < 60) {
-      matrix.println(timerValue, DEC);
+    } else if (currentTimerValue < 60) {
+      matrix.println(currentTimerValue, DEC);
       matrix.drawColon(false);
     } else {
-      int finalValue = ((int)(timerValue / 60) * 100) + timerValue % 60;
+      int finalValue = ((int)(currentTimerValue / 60) * 100) + currentTimerValue % 60;
       matrix.println(finalValue, DEC);
       matrix.drawColon(true);
     }
-    if (timerValue <= 0) {
+    if (currentTimerValue <= 0) {
       matrix.writeDigitNum(0, 0);
       matrix.writeDigitNum(1, 0);
       matrix.drawColon(true);
@@ -189,6 +212,7 @@ void checkTimer() {
       if (timerZeroFlashCount >= timerZeroFlashTimeOut) {
         timerValueSet = false;
         buttonPressed = false;
+        timerZeroFlashCount = 0;
         matrix.blinkRate(0);
       }
     }
